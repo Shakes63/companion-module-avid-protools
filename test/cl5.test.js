@@ -14,7 +14,7 @@ function fakeFollow(text) {
 }
 
 test('polls the right RCP parameter for each source type', () => {
-	const follow = fakeFollow('33=Vox 1\nmix3=Aux\nmtx2=Lobby\ndca8=Band')
+	const follow = fakeFollow('33=Vox 1\nmix3=Aux\nmtx2=Lobby\ndca8=Band\nmute2=Choir')
 	follow._poll()
 
 	assert.deepEqual(follow.sent, [
@@ -22,6 +22,7 @@ test('polls the right RCP parameter for each source type', () => {
 		'get MIXER:Current/Mix/Fader/On 2 0',
 		'get MIXER:Current/Mtrx/Fader/On 1 0',
 		'get MIXER:Current/DCA/Fader/On 7 0',
+		'get MIXER:Current/MuteMaster/On 1 0',
 	])
 })
 
@@ -38,9 +39,11 @@ for (const [label, line, expected] of [
 	['mix bus', 'OK get "MIXER:Current/Mix/Fader/On" 2 0 0', { track: 'Aux', muted: true, label: 'MIX 3' }],
 	['matrix', 'NOTIFY set "MIXER:Current/Mtrx/Fader/On" 1 0 1', { track: 'Lobby', muted: false, label: 'MTX 2' }],
 	['DCA', 'OK get "MIXER:Current/DCA/Fader/On" 7 0 0', { track: 'Band', muted: true, label: 'DCA 8' }],
+	// A mute group runs the other way: engaged (1) is what mutes the track.
+	['mute group', 'OK get "MIXER:Current/MuteMaster/On" 1 0 1', { track: 'Choir', muted: true, label: 'MUTE 2' }],
 ]) {
 	test(`reads back a ${label} reply`, () => {
-		const follow = fakeFollow('33=Vox 1\nmix3=Aux\nmtx2=Lobby\ndca8=Band')
+		const follow = fakeFollow('33=Vox 1\nmix3=Aux\nmtx2=Lobby\ndca8=Band\nmute2=Choir')
 		const seen = []
 		follow.on('consoleState', (s) => seen.push(s))
 
@@ -80,6 +83,33 @@ test('an unchanged value is not re-applied to Pro Tools', () => {
 	follow._onLine('NOTIFY set "MIXER:Current/Mix/Fader/On" 2 0 1')
 	assert.equal(seen.length, 2, 'a genuine change fires')
 	assert.equal(seen[1].muted, false)
+})
+
+test('a mute group is the inverse of a fader, both ways round', () => {
+	const follow = fakeFollow('mute2=Choir\ndca2=Band')
+	const seen = []
+	follow.on('consoleState', (s) => s && seen.push(s))
+
+	// Same value on both parameters, opposite meaning for Pro Tools.
+	follow._onLine('OK get "MIXER:Current/MuteMaster/On" 1 0 1')
+	follow._onLine('OK get "MIXER:Current/DCA/Fader/On" 1 0 1')
+	assert.deepEqual(
+		seen.map((s) => [s.label, s.muted]),
+		[
+			['MUTE 2', true],
+			['DCA 2', false],
+		],
+	)
+
+	follow._onLine('NOTIFY set "MIXER:Current/MuteMaster/On" 1 0 0')
+	follow._onLine('NOTIFY set "MIXER:Current/DCA/Fader/On" 1 0 0')
+	assert.deepEqual(
+		seen.slice(2).map((s) => [s.label, s.muted]),
+		[
+			['MUTE 2', false],
+			['DCA 2', true],
+		],
+	)
 })
 
 test('a parameter that is not mapped is ignored', () => {

@@ -31,6 +31,7 @@ const SOURCES = {
 	mix: { label: 'Mix bus', prefix: 'mix', count: 24 },
 	mtx: { label: 'Matrix', prefix: 'mtx', count: 8 },
 	dca: { label: 'DCA', prefix: 'dca', count: 16 },
+	mute: { label: 'Mute group', prefix: 'mute', count: 8 },
 }
 
 /** Text-format prefixes accepted on input, including a few spellings that are
@@ -43,6 +44,9 @@ const PREFIX_ALIASES = {
 	mtx: 'mtx',
 	matrix: 'mtx',
 	dca: 'dca',
+	mute: 'mute',
+	mutegroup: 'mute',
+	mg: 'mute',
 }
 
 const SRC_CHOICES = [
@@ -60,9 +64,10 @@ export function rowIds(i) {
 
 /**
  * Parse the mapping text.
- * Lines look like:  33=Vox 1  |  mix3=Aux  |  mtx2=Lobby  |  dca8=Band  |  # comment
+ * Lines look like:  33=Vox 1  |  mix3=Aux  |  mtx2=Lobby  |  dca8=Band  |
+ *                   mute2=Choir  |  # comment
  * A bare number is an input channel.
- * Returns [{ kind:'ch'|'mix'|'mtx'|'dca', num, index, track }]
+ * Returns [{ kind:'ch'|'mix'|'mtx'|'dca'|'mute', num, index, track }]
  */
 export function parseMappings(text) {
 	const out = []

@@ -3,35 +3,39 @@ import { EventEmitter } from 'events'
 
 const RCP_PORT = 49280
 
-/** RCP parameter carrying the ON switch for each source type, keyed by the
- *  mapping `kind`. Verified against the CL/QL parameter list. */
-const ON_PARAM = {
-	ch: 'MIXER:Current/InCh/Fader/On',
-	mix: 'MIXER:Current/Mix/Fader/On',
-	mtx: 'MIXER:Current/Mtrx/Fader/On',
-	dca: 'MIXER:Current/DCA/Fader/On',
+/**
+ * The RCP parameter to watch for each source type, keyed by the mapping `kind`,
+ * with the console value that means the Pro Tools track should be muted.
+ * Verified against the CL/QL parameter list.
+ *
+ * A fader's ON=1 means *unmuted*, so 0 is the muting value. A mute group master
+ * is the other way round: ON=1 is the group actively muting its channels.
+ */
+const SOURCE_PARAM = {
+	ch: { param: 'MIXER:Current/InCh/Fader/On', mutedWhen: 0, label: 'ch' },
+	mix: { param: 'MIXER:Current/Mix/Fader/On', mutedWhen: 0, label: 'MIX' },
+	mtx: { param: 'MIXER:Current/Mtrx/Fader/On', mutedWhen: 0, label: 'MTX' },
+	dca: { param: 'MIXER:Current/DCA/Fader/On', mutedWhen: 0, label: 'DCA' },
+	mute: { param: 'MIXER:Current/MuteMaster/On', mutedWhen: 1, label: 'MUTE' },
 }
-
-/** How a source type reads back in the log. */
-const KIND_LABEL = { ch: 'ch', mix: 'MIX', mtx: 'MTX', dca: 'DCA' }
 
 /** Match a parameter address from the console back to a mapping kind. */
 function kindOfAddress(address) {
-	for (const [kind, param] of Object.entries(ON_PARAM)) {
+	for (const [kind, src] of Object.entries(SOURCE_PARAM)) {
 		// Compare the distinctive tail so the `MIXER:Current` prefix can vary.
-		if (address.endsWith(param.slice(param.indexOf('/')))) return kind
+		if (address.endsWith(src.param.slice(src.param.indexOf('/')))) return kind
 	}
 	return null
 }
 
 /**
- * Mirrors Yamaha CL/QL channel, mix, matrix and DCA ON state onto Pro Tools
- * track mutes.
+ * Mirrors Yamaha CL/QL channel, mix, matrix, DCA and mute group state onto Pro
+ * Tools track mutes. Which console value counts as muted is per source type --
+ * see SOURCE_PARAM above.
  *
- * Yamaha ON=1 means the channel is *unmuted*, so the mute we push to Pro Tools
- * is the inverse. We only act when a console value CHANGES (or on a forced
- * resync), so manually muting a track in Companion/Pro Tools stays put until
- * the console next moves -- manual control remains a usable override.
+ * We only act when a console value CHANGES (or on a forced resync), so manually
+ * muting a track in Companion/Pro Tools stays put until the console next moves
+ * -- manual control remains a usable override.
  */
 export class Cl5Follow extends EventEmitter {
 	constructor(log) {
@@ -169,8 +173,8 @@ export class Cl5Follow extends EventEmitter {
 	/** Ask the console for every mapped parameter. */
 	_poll() {
 		for (const m of this.mappings) {
-			const param = ON_PARAM[m.kind]
-			if (param) this._send(`get ${param} ${m.index} 0`)
+			const src = SOURCE_PARAM[m.kind]
+			if (src) this._send(`get ${src.param} ${m.index} 0`)
 		}
 	}
 
@@ -209,7 +213,7 @@ export class Cl5Follow extends EventEmitter {
 		this.last.set(k, val)
 		if (prev === val && !this._forceApply) return // no change -> leave PT alone
 
-		// Yamaha ON=1 -> unmuted, so the Pro Tools mute is the inverse.
-		this.emit('consoleState', { track: m.track, muted: val === 0, label: `${KIND_LABEL[kind]} ${m.num}` })
+		const src = SOURCE_PARAM[kind]
+		this.emit('consoleState', { track: m.track, muted: val === src.mutedWhen, label: `${src.label} ${m.num}` })
 	}
 }

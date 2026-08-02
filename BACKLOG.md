@@ -39,19 +39,20 @@ in and is adopted into the rows instead (verbatim, so comments survive one more
 save). More than 16 rules keeps the text authoritative and leaves the rows
 alone, so a large mapping is never silently truncated.
 
-Source types are input channel, mix bus, matrix and DCA. The RCP parameters
-(`InCh`/`Mix`/`Mtrx`/`DCA` + `/Fader/On`) were taken from the CL/QL parameter
-list, and `test/cl5.test.js` covers what is polled and how replies are read, but
-only input channels and DCAs have ever been exercised against a real desk.
+Source types are input channel, mix bus, matrix, DCA and mute group. The RCP
+parameters were taken from the CL/QL parameter list, and `test/cl5.test.js`
+covers what is polled and how replies are read, but only input channels and DCAs
+have ever been exercised against a real desk. Mute groups are the ones to watch:
+`MuteMaster/On` is the inverse of `Fader/On` (1 = the group is muting), which is
+right per the QL5 manual but has never been seen on the wire here.
 
 Still open:
 
-- Mute groups. `MIXER:Current/MuteMaster/On` exists on CL/QL, but its polarity
-  is the opposite of `Fader/On` — 1 means muted — so it needs its own handling
-  rather than another entry in the source table.
 - The track dropdown is a snapshot from when the config page opened; refreshing
   means saving and reopening the config. A real refresh button would need a
   custom config UI.
+- Only `MIXER:Current` is addressed, so mappings follow whatever is loaded, not a
+  specific scene.
 
 ## Re-check fader support on new Pro Tools releases
 

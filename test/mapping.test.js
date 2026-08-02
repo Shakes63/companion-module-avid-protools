@@ -44,7 +44,7 @@ function settled(text) {
 }
 
 test('text and rows round trip', () => {
-	const text = '33=Vox 1\nmix3=Aux\nmtx2=Lobby\ndca8=Band'
+	const text = '33=Vox 1\nmix3=Aux\nmtx2=Lobby\ndca8=Band\nmute2=Choir'
 	const mappings = parseMappings(text)
 	assert.deepEqual(
 		mappings.map((m) => [m.kind, m.num, m.index, m.track]),
@@ -53,6 +53,7 @@ test('text and rows round trip', () => {
 			['mix', 3, 2, 'Aux'],
 			['mtx', 2, 1, 'Lobby'],
 			['dca', 8, 7, 'Band'],
+			['mute', 2, 1, 'Choir'],
 		],
 	)
 	assert.equal(serializeMappings(mappings), text)
@@ -62,8 +63,9 @@ test('text and rows round trip', () => {
 test('source prefixes accept the obvious spellings', () => {
 	const kinds = (text) => parseMappings(text).map((m) => m.kind)
 
-	assert.deepEqual(kinds('MIX3=A\nMtx2=B\nDCA8=C'), ['mix', 'mtx', 'dca'], 'case is ignored')
+	assert.deepEqual(kinds('MIX3=A\nMtx2=B\nDCA8=C\nMute2=D'), ['mix', 'mtx', 'dca', 'mute'], 'case is ignored')
 	assert.deepEqual(kinds('matrix2=A'), ['mtx'], 'matrix spells out')
+	assert.deepEqual(kinds('mutegroup2=A\nmg2=B'), ['mute', 'mute'], 'mute group spells out, or abbreviates')
 	assert.deepEqual(kinds('ch33=A\nin33=B\n33=C'), ['ch', 'ch', 'ch'], 'a bare number is an input channel')
 	assert.deepEqual(kinds('mix 3 = A'), ['mix'], 'spaces around the prefix are fine')
 	assert.deepEqual(kinds('bus3=A'), [], 'an unknown prefix is skipped, not guessed at')
