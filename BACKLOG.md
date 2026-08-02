@@ -47,17 +47,6 @@ Still open:
   means saving and reopening the config. A real refresh button would need a
   custom config UI.
 
-## Status indicator for the PTSL relay
-
-When Companion runs on a different machine from Pro Tools, a TCP relay is
-required (Pro Tools binds its scripting port to loopback only). A relay is
-typically a headless background process, so there is nothing to look at to
-confirm it is alive — the Companion connection status is the only signal.
-
-A small tray/menubar helper showing listen address, connection count and last
-client would make that visible. It should supervise or wrap the relay rather
-than replace it, so the relay still works headlessly.
-
 ## Re-check fader support on new Pro Tools releases
 
 PTSL currently exposes no live volume control. `GetTrackControlInfo` (148) and
