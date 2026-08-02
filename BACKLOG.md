@@ -39,10 +39,16 @@ in and is adopted into the rows instead (verbatim, so comments survive one more
 save). More than 16 rules keeps the text authoritative and leaves the rows
 alone, so a large mapping is never silently truncated.
 
+Source types are input channel, mix bus, matrix and DCA. The RCP parameters
+(`InCh`/`Mix`/`Mtrx`/`DCA` + `/Fader/On`) were taken from the CL/QL parameter
+list, and `test/cl5.test.js` covers what is polled and how replies are read, but
+only input channels and DCAs have ever been exercised against a real desk.
+
 Still open:
 
-- Source types are limited to input channel and DCA — mixes, matrices and mute
-  groups need address support in `cl5.js` first.
+- Mute groups. `MIXER:Current/MuteMaster/On` exists on CL/QL, but its polarity
+  is the opposite of `Fader/On` — 1 means muted — so it needs its own handling
+  rather than another entry in the source table.
 - The track dropdown is a snapshot from when the config page opened; refreshing
   means saving and reopening the config. A real refresh button would need a
   custom config UI.

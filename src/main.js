@@ -4,6 +4,7 @@ import { Cl5Follow } from './cl5.js'
 import {
 	MAX_MAP_ROWS,
 	mapRowFields,
+	mappingWarnings,
 	mappingsFromRows,
 	parseMappings,
 	rowsFromMappings,
@@ -12,7 +13,7 @@ import {
 import { varSafe, trackChoices } from './util.js'
 
 const CL5_POLL_DEFAULT = 5000
-const CL5_MAP_EXAMPLE = ['33=Vox 1', '45=Pastor Mic', 'dca8=Band'].join('\n')
+const CL5_MAP_EXAMPLE = ['33=Vox 1', '45=Pastor Mic', 'mix3=Aux Feed', 'mtx2=Lobby', 'dca8=Band'].join('\n')
 
 class ProToolsInstance extends InstanceBase {
 	constructor(internal) {
@@ -110,6 +111,7 @@ class ProToolsInstance extends InstanceBase {
 			this.config = cfg
 			this.saveConfig(cfg)
 		}
+		for (const w of mappingWarnings(mappings)) this.log('warn', w)
 		return mappings
 	}
 
@@ -206,7 +208,7 @@ class ProToolsInstance extends InstanceBase {
 				width: 12,
 				label: 'Follow a Yamaha CL/QL console',
 				value:
-					'Mirrors console channel/DCA ON state onto Pro Tools track mutes (Yamaha ON = unmuted, so an OFF channel mutes the track). Only acts when the console changes, so muting from a Companion button still works as an override until the desk next moves.',
+					'Mirrors console channel, mix, matrix and DCA ON state onto Pro Tools track mutes (Yamaha ON = unmuted, so an OFF source mutes the track). Only acts when the console changes, so muting from a Companion button still works as an override until the desk next moves.',
 			},
 			{ type: 'checkbox', id: 'cl5Enabled', label: 'Enable console follow', width: 4, default: false },
 			{

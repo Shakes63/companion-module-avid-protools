@@ -60,18 +60,29 @@ already attached.
 
 ## Yamaha CL/QL console follow (optional)
 
-Mirrors console channel and DCA **ON** state onto Pro Tools track mutes, so the
+Mirrors console **ON** state onto Pro Tools track mutes, so the
 recording/broadcast rig follows front of house automatically.
 
-Yamaha **ON = unmuted**, so a channel switched **off** mutes the matching Pro
+Yamaha **ON = unmuted**, so a source switched **off** mutes the matching Pro
 Tools track. The module connects to the console on TCP **49280** and reacts to
 the console's own change notifications, so it responds immediately.
 
 ### Mapping
 
-The connection config has a block of mapping rows: pick a **source** (input
-channel or DCA), its **number**, and the **Pro Tools track** it drives. Leave a
-row on _unused_ to skip it.
+The connection config has a block of mapping rows: pick a **source**, its
+**number**, and the **Pro Tools track** it drives. Leave a row on _unused_ to
+skip it.
+
+| Source        | Numbers on a CL/QL | In text |
+| ------------- | ------------------ | ------- |
+| Input channel | 1–72               | `33=`   |
+| Mix bus       | 1–24               | `mix3=` |
+| Matrix        | 1–8                | `mtx2=` |
+| DCA           | 1–16               | `dca8=` |
+
+A number outside the console's range is logged as a warning and ignored by the
+desk. Smaller consoles in the family have fewer of each — a QL1 has 32 input
+channels, not 72.
 
 The track dropdown is filled from the live session, taken as a snapshot when the
 config page opened — save and reopen the config to pick up session changes. A
@@ -84,13 +95,16 @@ for import/export:
 ```
 33=Vox 1
 45=HH 1
+mix3=Aux Feed
+mtx2=Lobby
 dca8=Band
 ```
 
-`33=` is input channel 33; `dca8=` is DCA 8. Editing that text directly works
-too — the rows are rebuilt from it when the config is saved, so it wins over the
-rows if both are changed at once. Mappings beyond the 16 editor rows stay in the
-text field and still run; the rows are left alone until the list is trimmed.
+A bare number is an input channel; `ch33=` and `in33=` mean the same thing, and
+`matrix2=` is accepted for `mtx2=`. Editing that text directly works too — the
+rows are rebuilt from it when the config is saved, so it wins over the rows if
+both are changed at once. Mappings beyond the 16 editor rows stay in the text
+field and still run; the rows are left alone until the list is trimmed.
 
 Names are matched against the live session and tolerate stray whitespace and
 case differences.

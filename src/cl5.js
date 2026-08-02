@@ -2,11 +2,31 @@ import net from 'net'
 import { EventEmitter } from 'events'
 
 const RCP_PORT = 49280
-const IN_CH = 'MIXER:Current/InCh/Fader/On'
-const DCA = 'MIXER:Current/DCA/Fader/On'
+
+/** RCP parameter carrying the ON switch for each source type, keyed by the
+ *  mapping `kind`. Verified against the CL/QL parameter list. */
+const ON_PARAM = {
+	ch: 'MIXER:Current/InCh/Fader/On',
+	mix: 'MIXER:Current/Mix/Fader/On',
+	mtx: 'MIXER:Current/Mtrx/Fader/On',
+	dca: 'MIXER:Current/DCA/Fader/On',
+}
+
+/** How a source type reads back in the log. */
+const KIND_LABEL = { ch: 'ch', mix: 'MIX', mtx: 'MTX', dca: 'DCA' }
+
+/** Match a parameter address from the console back to a mapping kind. */
+function kindOfAddress(address) {
+	for (const [kind, param] of Object.entries(ON_PARAM)) {
+		// Compare the distinctive tail so the `MIXER:Current` prefix can vary.
+		if (address.endsWith(param.slice(param.indexOf('/')))) return kind
+	}
+	return null
+}
 
 /**
- * Mirrors Yamaha CL/QL channel + DCA ON state onto Pro Tools track mutes.
+ * Mirrors Yamaha CL/QL channel, mix, matrix and DCA ON state onto Pro Tools
+ * track mutes.
  *
  * Yamaha ON=1 means the channel is *unmuted*, so the mute we push to Pro Tools
  * is the inverse. We only act when a console value CHANGES (or on a forced
@@ -149,7 +169,8 @@ export class Cl5Follow extends EventEmitter {
 	/** Ask the console for every mapped parameter. */
 	_poll() {
 		for (const m of this.mappings) {
-			this._send(`get ${m.kind === 'dca' ? DCA : IN_CH} ${m.index} 0`)
+			const param = ON_PARAM[m.kind]
+			if (param) this._send(`get ${param} ${m.index} 0`)
 		}
 	}
 
@@ -177,9 +198,7 @@ export class Cl5Follow extends EventEmitter {
 		const val = parseInt(p[5], 10)
 		if (Number.isNaN(index) || Number.isNaN(val)) return
 
-		let kind = null
-		if (address.includes('/InCh/Fader/On')) kind = 'ch'
-		else if (address.includes('/DCA/Fader/On')) kind = 'dca'
+		const kind = kindOfAddress(address)
 		if (!kind) return
 
 		const m = this.mappings.find((x) => x.kind === kind && x.index === index)
@@ -191,6 +210,6 @@ export class Cl5Follow extends EventEmitter {
 		if (prev === val && !this._forceApply) return // no change -> leave PT alone
 
 		// Yamaha ON=1 -> unmuted, so the Pro Tools mute is the inverse.
-		this.emit('consoleState', { track: m.track, muted: val === 0, label: `${kind === 'dca' ? 'DCA ' : 'ch '}${m.num}` })
+		this.emit('consoleState', { track: m.track, muted: val === 0, label: `${KIND_LABEL[kind]} ${m.num}` })
 	}
 }

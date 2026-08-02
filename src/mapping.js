@@ -18,11 +18,40 @@ export const MAX_MAP_ROWS = 16
 
 const SRC_UNUSED = ''
 
+/**
+ * Source types, in the order they appear in the dropdown.
+ *
+ * `prefix` is how the type is written in the text format — input channels stay
+ * bare (`33=Vox 1`) so mappings written before the other types existed keep
+ * their exact spelling. `count` is how many of that type a CL/QL carries, used
+ * only to warn about an out-of-range number.
+ */
+const SOURCES = {
+	ch: { label: 'Input channel', prefix: '', count: 72 },
+	mix: { label: 'Mix bus', prefix: 'mix', count: 24 },
+	mtx: { label: 'Matrix', prefix: 'mtx', count: 8 },
+	dca: { label: 'DCA', prefix: 'dca', count: 16 },
+}
+
+/** Text-format prefixes accepted on input, including a few spellings that are
+ *  easier to guess than the canonical one. */
+const PREFIX_ALIASES = {
+	ch: 'ch',
+	in: 'ch',
+	inch: 'ch',
+	mix: 'mix',
+	mtx: 'mtx',
+	matrix: 'mtx',
+	dca: 'dca',
+}
+
 const SRC_CHOICES = [
 	{ id: SRC_UNUSED, label: '- unused -' },
-	{ id: 'ch', label: 'Input channel' },
-	{ id: 'dca', label: 'DCA' },
+	...Object.entries(SOURCES).map(([id, s]) => ({ id, label: s.label })),
 ]
+
+/** The highest source number a CL/QL has of each type. */
+export const SOURCE_COUNTS = Object.fromEntries(Object.entries(SOURCES).map(([id, s]) => [id, s.count]))
 
 /** Config field ids for editor row `i`. */
 export function rowIds(i) {
@@ -31,28 +60,46 @@ export function rowIds(i) {
 
 /**
  * Parse the mapping text.
- * Lines look like:  33=Vox 1   |   dca8=Band   |   # comment
- * Returns [{ kind:'ch'|'dca', num, index, track }]
+ * Lines look like:  33=Vox 1  |  mix3=Aux  |  mtx2=Lobby  |  dca8=Band  |  # comment
+ * A bare number is an input channel.
+ * Returns [{ kind:'ch'|'mix'|'mtx'|'dca', num, index, track }]
  */
 export function parseMappings(text) {
 	const out = []
 	for (const rawLine of String(text ?? '').split(/[\n,]/)) {
 		const line = rawLine.trim()
 		if (!line || line.startsWith('#')) continue
-		const m = line.match(/^(dca\s*)?(\d+)\s*=\s*(.+)$/i)
+		const m = line.match(/^([a-z]+)?\s*(\d+)\s*=\s*(.+)$/i)
 		if (!m) continue
-		const isDca = !!m[1]
+		const kind = m[1] ? PREFIX_ALIASES[m[1].toLowerCase()] : 'ch'
+		if (!kind) continue
 		const num = parseInt(m[2], 10)
 		const track = m[3].trim()
 		if (!num || !track) continue
-		out.push({ kind: isDca ? 'dca' : 'ch', num, index: num - 1, track })
+		out.push({ kind, num, index: num - 1, track })
 	}
 	return out
 }
 
 /** Render mappings back to the text format `parseMappings` reads. */
 export function serializeMappings(mappings) {
-	return mappings.map((m) => `${m.kind === 'dca' ? 'dca' : ''}${m.num}=${m.track}`).join('\n')
+	return mappings.map((m) => `${SOURCES[m.kind]?.prefix ?? ''}${m.num}=${m.track}`).join('\n')
+}
+
+/** Human-readable complaints about a mapping set, e.g. a matrix number a CL/QL
+ *  does not have. Advisory only — the mapping still runs. */
+export function mappingWarnings(mappings) {
+	const out = []
+	for (const m of mappings) {
+		const src = SOURCES[m.kind]
+		if (!src) continue
+		if (m.num > src.count) {
+			out.push(
+				`${src.label} ${m.num} ("${m.track}") is beyond the ${src.count} a CL/QL has - the console will ignore it`,
+			)
+		}
+	}
+	return out
 }
 
 /** Collect the filled-in editor rows, in row order. */
@@ -61,7 +108,7 @@ export function mappingsFromRows(config) {
 	for (let i = 0; i < MAX_MAP_ROWS; i++) {
 		const ids = rowIds(i)
 		const kind = String(config?.[ids.src] ?? '')
-		if (kind !== 'ch' && kind !== 'dca') continue
+		if (!SOURCES[kind]) continue
 		const num = parseInt(config?.[ids.num], 10)
 		const track = String(config?.[ids.trk] ?? '').trim()
 		if (!num || num < 1 || !track) continue
@@ -108,6 +155,9 @@ export function mapRowFields(choices) {
 				type: 'number',
 				id: ids.num,
 				label: 'Number',
+				tooltip: `On a CL/QL: ${Object.values(SOURCES)
+					.map((s) => `${s.label} 1-${s.count}`)
+					.join(', ')}`,
 				width: 2,
 				default: 1,
 				min: 1,

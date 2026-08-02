@@ -12,8 +12,9 @@ Tools **push events**, so feedback is live rather than polled.
 - Solo, and record-safe-friendly track state
 - Feedbacks for muted / soloed / group-muted, and variables for every track
 - A ready-made mute preset per track
-- Optional **Yamaha CL/QL console follow** — mirrors console channel and DCA ON
-  state onto Pro Tools mutes, mapped from dropdowns in the connection config
+- Optional **Yamaha CL/QL console follow** — mirrors console input channel, mix,
+  matrix and DCA ON state onto Pro Tools mutes, mapped from dropdowns in the
+  connection config
 
 See [companion/HELP.md](companion/HELP.md) for setup and full documentation.
 

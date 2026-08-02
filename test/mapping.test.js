@@ -4,7 +4,9 @@ import assert from 'node:assert/strict'
 import Instance from '../src/main.js'
 import {
 	MAX_MAP_ROWS,
+	SOURCE_COUNTS,
 	mapRowFields,
+	mappingWarnings,
 	mappingsFromRows,
 	parseMappings,
 	rowIds,
@@ -42,10 +44,42 @@ function settled(text) {
 }
 
 test('text and rows round trip', () => {
-	const text = '33=Vox 1\ndca8=Band'
+	const text = '33=Vox 1\nmix3=Aux\nmtx2=Lobby\ndca8=Band'
 	const mappings = parseMappings(text)
+	assert.deepEqual(
+		mappings.map((m) => [m.kind, m.num, m.index, m.track]),
+		[
+			['ch', 33, 32, 'Vox 1'],
+			['mix', 3, 2, 'Aux'],
+			['mtx', 2, 1, 'Lobby'],
+			['dca', 8, 7, 'Band'],
+		],
+	)
 	assert.equal(serializeMappings(mappings), text)
 	assert.deepEqual(mappingsFromRows(rowsFromMappings(mappings)), mappings)
+})
+
+test('source prefixes accept the obvious spellings', () => {
+	const kinds = (text) => parseMappings(text).map((m) => m.kind)
+
+	assert.deepEqual(kinds('MIX3=A\nMtx2=B\nDCA8=C'), ['mix', 'mtx', 'dca'], 'case is ignored')
+	assert.deepEqual(kinds('matrix2=A'), ['mtx'], 'matrix spells out')
+	assert.deepEqual(kinds('ch33=A\nin33=B\n33=C'), ['ch', 'ch', 'ch'], 'a bare number is an input channel')
+	assert.deepEqual(kinds('mix 3 = A'), ['mix'], 'spaces around the prefix are fine')
+	assert.deepEqual(kinds('bus3=A'), [], 'an unknown prefix is skipped, not guessed at')
+})
+
+test('input channels still serialise bare, so old mappings do not churn', () => {
+	const text = '33=Vox 1\ndca8=Band'
+	assert.equal(serializeMappings(parseMappings(text)), text)
+})
+
+test('a source number the console does not have is warned about', () => {
+	assert.deepEqual(mappingWarnings(parseMappings('33=Vox 1\nmix24=Aux\ndca16=Band')), [], 'in-range is quiet')
+
+	const warnings = mappingWarnings(parseMappings(`mtx${SOURCE_COUNTS.mtx + 1}=Lobby`))
+	assert.equal(warnings.length, 1)
+	assert.match(warnings[0], /Matrix 9 \("Lobby"\) is beyond the 8/)
 })
 
 test('an empty config settles without a save loop', () => {
