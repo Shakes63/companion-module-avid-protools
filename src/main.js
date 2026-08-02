@@ -1,6 +1,14 @@
 import { InstanceBase, InstanceStatus, Regex } from '@companion-module/base'
 import { PtslClient } from './ptsl/client.js'
-import { Cl5Follow, parseMappings } from './cl5.js'
+import { Cl5Follow } from './cl5.js'
+import {
+	MAX_MAP_ROWS,
+	mapRowFields,
+	mappingsFromRows,
+	parseMappings,
+	rowsFromMappings,
+	serializeMappings,
+} from './mapping.js'
 import { varSafe, trackChoices } from './util.js'
 
 const CL5_POLL_DEFAULT = 5000
@@ -15,10 +23,12 @@ class ProToolsInstance extends InstanceBase {
 		this.pollTimer = null
 		this.usingEvents = false
 		this.cl5 = null
+		this.mappings = []
 	}
 
 	async init(config) {
 		this.config = config
+		this.mappings = this.syncMappingConfig()
 		this.updateStatus(InstanceStatus.Connecting)
 		this.initDefinitions()
 		await this.connect()
@@ -38,6 +48,7 @@ class ProToolsInstance extends InstanceBase {
 
 	async configUpdated(config) {
 		this.config = config
+		this.mappings = this.syncMappingConfig()
 		this.stopTimers()
 		if (this.cl5) {
 			this.cl5.stop()
@@ -59,12 +70,55 @@ class ProToolsInstance extends InstanceBase {
 		return t?.name ?? null
 	}
 
+	/**
+	 * Reconcile the structured mapping rows with the free-text field and return
+	 * the mappings to run with.
+	 *
+	 * Whichever side the user last touched wins. `cl5MapAuto` holds the text this
+	 * module last generated, so text that no longer matches it was hand-edited
+	 * (or imported) and gets adopted into the rows; otherwise the rows are the
+	 * editor and are serialised back out to text.
+	 */
+	syncMappingConfig() {
+		const cfg = this.config ?? {}
+		const text = String(cfg.cl5Map ?? '')
+		const rowsOwnText = typeof cfg.cl5MapAuto === 'string' && text === cfg.cl5MapAuto
+
+		let mappings
+		let patch = null
+
+		if (rowsOwnText) {
+			mappings = mappingsFromRows(cfg)
+			const out = serializeMappings(mappings)
+			if (out !== text) patch = { cl5Map: out, cl5MapAuto: out }
+		} else {
+			mappings = parseMappings(text)
+			if (mappings.length <= MAX_MAP_ROWS) {
+				// Adopt the text into the rows, leaving the text itself verbatim so
+				// comments and formatting survive until the rows are next edited.
+				patch = { ...rowsFromMappings(mappings), cl5MapAuto: text }
+			} else {
+				this.log(
+					'warn',
+					`Console mapping has ${mappings.length} rules, more than the ${MAX_MAP_ROWS} editor rows - the text field stays the source. Trim it to ${MAX_MAP_ROWS} rules to edit it as rows.`,
+				)
+			}
+		}
+
+		if (patch && Object.keys(patch).some((k) => cfg[k] !== patch[k])) {
+			Object.assign(cfg, patch)
+			this.config = cfg
+			this.saveConfig(cfg)
+		}
+		return mappings
+	}
+
 	startCl5() {
 		if (this.cl5) {
 			this.cl5.stop()
 			this.cl5 = null
 		}
-		const mappings = parseMappings(this.config?.cl5Map ?? '')
+		const mappings = this.mappings ?? []
 		this.cl5 = new Cl5Follow((lvl, msg) => this.log(lvl, msg))
 
 		this.cl5.on('connectionChanged', (up) => {
@@ -175,14 +229,36 @@ class ProToolsInstance extends InstanceBase {
 				max: 60000,
 			},
 			{
+				type: 'static-text',
+				id: 'cl5mapinfo',
+				width: 12,
+				label: 'Mapping',
+				value:
+					'One console source per row; leave a row on "unused" to skip it. The track list is a snapshot taken when this page opened - save and reopen to pick up session changes, or type a name that is not in the list. The text field at the bottom holds the same mapping in plain text for import/export.',
+			},
+			...mapRowFields(this.configTrackChoices()),
+			{
 				type: 'textinput',
 				id: 'cl5Map',
-				label: 'Mapping - one rule per line',
-				tooltip: `Input channel or DCA to Pro Tools track, e.g.\n${CL5_MAP_EXAMPLE}`,
+				label: 'Mapping as text (one rule per line)',
+				tooltip: `Kept in sync with the rows above. Edit it directly to paste a mapping in - the rows are rebuilt from it on save. Example:\n${CL5_MAP_EXAMPLE}`,
 				width: 12,
 				default: '',
 			},
 		]
+	}
+
+	/** Track choices for the config dropdowns: the live session list, plus any
+	 *  already-mapped track that is not currently in the session. */
+	configTrackChoices() {
+		const choices = this.tracks.map((t) => ({ id: t.name, label: t.name }))
+		const known = new Set(choices.map((c) => c.id))
+		for (const m of mappingsFromRows(this.config ?? {})) {
+			if (known.has(m.track)) continue
+			known.add(m.track)
+			choices.push({ id: m.track, label: `${m.track} (not in session)` })
+		}
+		return choices
 	}
 
 	stopTimers() {

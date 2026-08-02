@@ -6,27 +6,6 @@ const IN_CH = 'MIXER:Current/InCh/Fader/On'
 const DCA = 'MIXER:Current/DCA/Fader/On'
 
 /**
- * Parse the mapping textarea.
- * Lines look like:  33=Vox 1   |   dca8=Band   |   # comment
- * Returns [{ kind:'ch'|'dca', num, index, track }]
- */
-export function parseMappings(text) {
-	const out = []
-	for (const rawLine of String(text ?? '').split(/[\n,]/)) {
-		const line = rawLine.trim()
-		if (!line || line.startsWith('#')) continue
-		const m = line.match(/^(dca\s*)?(\d+)\s*=\s*(.+)$/i)
-		if (!m) continue
-		const isDca = !!m[1]
-		const num = parseInt(m[2], 10)
-		const track = m[3].trim()
-		if (!num || !track) continue
-		out.push({ kind: isDca ? 'dca' : 'ch', num, index: num - 1, track })
-	}
-	return out
-}
-
-/**
  * Mirrors Yamaha CL/QL channel + DCA ON state onto Pro Tools track mutes.
  *
  * Yamaha ON=1 means the channel is *unmuted*, so the mute we push to Pro Tools

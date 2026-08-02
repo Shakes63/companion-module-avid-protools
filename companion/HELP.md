@@ -67,7 +67,19 @@ Yamaha **ON = unmuted**, so a channel switched **off** mutes the matching Pro
 Tools track. The module connects to the console on TCP **49280** and reacts to
 the console's own change notifications, so it responds immediately.
 
-Mapping is one rule per line:
+### Mapping
+
+The connection config has a block of mapping rows: pick a **source** (input
+channel or DCA), its **number**, and the **Pro Tools track** it drives. Leave a
+row on _unused_ to skip it.
+
+The track dropdown is filled from the live session, taken as a snapshot when the
+config page opened — save and reopen the config to pick up session changes. A
+track that is not in the list (not created yet, or a different session) can be
+typed in instead.
+
+Underneath the rows, the same mapping is kept as plain text, one rule per line,
+for import/export:
 
 ```
 33=Vox 1
@@ -75,8 +87,13 @@ Mapping is one rule per line:
 dca8=Band
 ```
 
-`33=` is input channel 33; `dca8=` is DCA 8. Names are matched against the live
-session and tolerate stray whitespace and case differences.
+`33=` is input channel 33; `dca8=` is DCA 8. Editing that text directly works
+too — the rows are rebuilt from it when the config is saved, so it wins over the
+rows if both are changed at once. Mappings beyond the 16 editor rows stay in the
+text field and still run; the rows are left alone until the list is trimmed.
+
+Names are matched against the live session and tolerate stray whitespace and
+case differences.
 
 It only acts when a console value **changes**, so muting from a Companion button
 still works as an override until the desk next moves that channel. On connect

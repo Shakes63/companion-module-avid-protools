@@ -21,28 +21,31 @@ Migration applied, from the base 2.0.0 breaking-change list:
 To verify: connection reaches Ok, tracks populate, mute/group/solo actions fire,
 feedbacks light, presets appear, and console follow connects and re-syncs.
 
-## Structured editor for the console mapping
+Also unverified against a running Companion: the structured mapping editor
+below. Its logic is covered by `test/mapping.test.js`, but nothing has confirmed
+how 16 rows × 3 fields actually render in the config panel, or that
+`saveConfig()` from `init()`/`configUpdated()` behaves as expected there.
 
-Today the console→track mapping is a single free-text field, one rule per line
-(`33=Vox 1`, `dca8=Band`). It works but is typo-prone, offers no validation, and
-requires knowing the exact Pro Tools track name.
+## Structured editor for the console mapping — done, needs a live check
 
-Wanted: one mapping per row, built from dropdowns — source type (input channel /
-DCA, later mix, matrix, mute group), number, and a Pro Tools track chosen from
-the live session list (the module already builds that list for the mute
-actions).
+The console→track mapping is now 16 rows of dropdowns (source type, number,
+Pro Tools track) in `src/mapping.js`, reconciled with the original free-text
+field by `syncMappingConfig()` in `src/main.js`.
 
-Constraints worth knowing before starting:
+How the two sides stay in sync: `cl5MapAuto` stores the text the module last
+generated. If the saved text still matches it, the rows are the editor and are
+serialised back out to text; if it does not, the text was hand-edited or pasted
+in and is adopted into the rows instead (verbatim, so comments survive one more
+save). More than 16 rules keeps the text authoritative and leaves the rows
+alone, so a large mapping is never silently truncated.
 
-- Companion config fields have no repeating-row control, so this means either N
-  fixed rows (blank = unused) or a custom config UI. N fixed rows keeps it all
-  inside `getConfigFields()`.
-- Config dropdown choices are fixed when the fields are defined, so the track
-  list is a snapshot — needs a refresh affordance, and a free-text escape hatch
-  for tracks not currently in the session.
-- The existing text field should keep working underneath, so mappings still
-  import/export as plain text.
-- Track names can carry stray whitespace, so name resolution must stay tolerant.
+Still open:
+
+- Source types are limited to input channel and DCA — mixes, matrices and mute
+  groups need address support in `cl5.js` first.
+- The track dropdown is a snapshot from when the config page opened; refreshing
+  means saving and reopening the config. A real refresh button would need a
+  custom config UI.
 
 ## Status indicator for the PTSL relay
 
