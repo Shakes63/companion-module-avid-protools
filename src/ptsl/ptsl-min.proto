@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+// Minimal, wire-compatible subset of Avid's PTSL.proto.
+//
+// PTSL exposes only two RPCs and carries every command payload as a JSON
+// string, so a client only needs the envelope -- not Avid's full message set.
+// `command` and `status` are enums in Avid's schema; protobuf encodes enums as
+// varints exactly like int32, so declaring them as int32 here is wire-compatible
+// while keeping this file small and free of Avid's copyrighted definitions.
+
+package ptsl;
+
+message RequestHeader {
+  string task_id = 1;
+  int32  command = 2;                          // CommandId enum
+  int32  version = 3;
+  string session_id = 4;
+  int32  version_minor = 5;
+  int32  version_revision = 6;
+  string versioned_request_header_json = 7;
+}
+
+message Request {
+  RequestHeader header = 1;
+  string request_body_json = 2;
+}
+
+message ResponseHeader {
+  string task_id = 1;
+  int32  command = 2;
+  int32  status = 3;                           // TaskStatus enum (3 = Completed)
+  int32  progress = 4;
+  int32  version = 5;
+  int32  version_minor = 6;
+  int32  version_revision = 7;
+  string versioned_response_header_json = 8;
+}
+
+message Response {
+  ResponseHeader header = 1;
+  string response_body_json = 2;
+  string response_error_json = 3;
+}
+
+service PTSL {
+  rpc SendGrpcRequest (Request) returns (Response);
+  rpc SendGrpcStreamingRequest (Request) returns (stream Response);
+}

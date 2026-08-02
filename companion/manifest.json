@@ -1,0 +1,28 @@
+{
+	"$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
+	"type": "connection",
+	"id": "avid-protools",
+	"name": "avid-protools",
+	"shortname": "Pro Tools",
+	"description": "Control Avid Pro Tools via the Pro Tools Scripting SDK (PTSL): mute/solo tracks by name, group scenes, live state feedback, and optional Yamaha CL/QL console follow.",
+	"version": "1.0.0",
+	"license": "MIT",
+	"repository": "git+https://github.com/Shakes63/companion-module-avid-protools.git",
+	"bugs": "https://github.com/Shakes63/companion-module-avid-protools/issues",
+	"maintainers": [
+		{
+			"name": "Jacob Neudorf",
+			"github": "https://github.com/Shakes63"
+		}
+	],
+	"runtime": {
+		"type": "node22",
+		"api": "nodejs-ipc",
+		"apiVersion": "2.1.2",
+		"entrypoint": "../src/main.js"
+	},
+	"legacyIds": [],
+	"manufacturer": "Avid",
+	"products": ["Pro Tools"],
+	"keywords": ["DAW", "Audio", "Recording"]
+}
