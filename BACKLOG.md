@@ -54,6 +54,14 @@ have ever been exercised against a real desk. Mute groups are the ones to watch:
 `MuteMaster/On` is the inverse of `Fader/On` (1 = the group is muting), which is
 right per the QL5 manual but has never been seen on the wire here.
 
+The editor shows only the rows in use. Companion config has no button field, so
+the row count is a `number` field whose arrows add and remove rows, and rows
+above it are hidden with `isVisibleExpression`. That works in config panels —
+bmd-atem 4.0.2 does the same thing to hide its Target IP behind a Bonjour pick —
+but it is evaluated by the config panel in the browser, so **it has not been
+seen rendering here**. Row 1 carries no expression on purpose: if the expression
+ever fails, the panel still shows one usable row instead of nothing.
+
 Still open:
 
 - The track dropdown is a snapshot from when the config page opened; refreshing
@@ -61,6 +69,9 @@ Still open:
   custom config UI.
 - Only `MIXER:Current` is addressed, so mappings follow whatever is loaded, not a
   specific scene.
+- Dropping the text field also dropped paste-in-a-mapping and the >16 escape
+  hatch. If either is missed, an import/export action would be a better home for
+  it than the config panel.
 
 ## Re-check fader support on new Pro Tools releases
 

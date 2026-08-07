@@ -72,17 +72,24 @@ console's own channels.
 
 ### Mapping
 
-The connection config has a block of mapping rows: pick a **source**, its
-**number**, and the **Pro Tools track** it drives. Leave a row on _unused_ to
-skip it.
+Each mapping is one row in the connection config: a **source**, its **number**,
+and the **Pro Tools track** it drives.
 
-| Source        | Numbers on a CL/QL | In text  | Mutes the track when |
-| ------------- | ------------------ | -------- | -------------------- |
-| Input channel | 1–72               | `33=`    | switched off         |
-| Mix bus       | 1–24               | `mix3=`  | switched off         |
-| Matrix        | 1–8                | `mtx2=`  | switched off         |
-| DCA           | 1–16               | `dca8=`  | switched off         |
-| Mute group    | 1–8                | `mute2=` | **engaged**          |
+The **Mappings** field above the rows is how many you have. Step it **up to add
+a mapping** — a new row appears straight away — and **down to remove the last
+one**. Only the rows you are using are shown; the maximum is 16.
+
+To delete a mapping that isn't the last one, clear its source or its track and
+save. It disappears and the rows below it move up, so the list never has holes
+in it.
+
+| Source        | Numbers on a CL/QL | Mutes the track when |
+| ------------- | ------------------ | -------------------- |
+| Input channel | 1–72               | switched off         |
+| Mix bus       | 1–24               | switched off         |
+| Matrix        | 1–8                | switched off         |
+| DCA           | 1–16               | switched off         |
+| Mute group    | 1–8                | **engaged**          |
 
 A number outside the console's range is logged as a warning and ignored by the
 desk. Smaller consoles in the family have fewer of each — a QL1 has 32 input
@@ -93,23 +100,10 @@ config page opened — save and reopen the config to pick up session changes. A
 track that is not in the list (not created yet, or a different session) can be
 typed in instead.
 
-Underneath the rows, the same mapping is kept as plain text, one rule per line,
-for import/export:
-
-```
-33=Vox 1
-45=HH 1
-mix3=Aux Feed
-mtx2=Lobby
-dca8=Band
-mute2=Choir
-```
-
-A bare number is an input channel; `ch33=` and `in33=` mean the same thing,
-`matrix2=` is accepted for `mtx2=`, and `mutegroup2=` or `mg2=` for `mute2=`. Editing that text directly works too — the
-rows are rebuilt from it when the config is saved, so it wins over the rows if
-both are changed at once. Mappings beyond the 16 editor rows stay in the text
-field and still run; the rows are left alone until the list is trimmed.
+Earlier versions kept the mapping in a free-text field instead (`33=Vox 1`, one
+rule per line). That field is gone; an existing text mapping is read into the
+rows once, the first time the updated module loads, and then cleared. Anything
+past the 16th rule is dropped, with a warning in the log saying how many.
 
 Names are matched against the live session and tolerate stray whitespace and
 case differences.

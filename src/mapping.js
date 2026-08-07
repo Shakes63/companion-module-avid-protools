@@ -57,9 +57,21 @@ const SRC_CHOICES = [
 /** The highest source number a CL/QL has of each type. */
 export const SOURCE_COUNTS = Object.fromEntries(Object.entries(SOURCES).map(([id, s]) => [id, s.count]))
 
+/** Config field holding how many mapping rows are in use. Rows past it are
+ *  hidden in the config panel and ignored at runtime. */
+export const MAP_COUNT_ID = 'cl5MapCount'
+
 /** Config field ids for editor row `i`. */
 export function rowIds(i) {
 	return { src: `cl5Src${i}`, num: `cl5Num${i}`, trk: `cl5Trk${i}` }
+}
+
+/** How many rows are in use. A config saved before the count existed has no
+ *  value, so fall back to every row — its filled rows still count. */
+export function rowCount(config) {
+	const n = parseInt(config?.[MAP_COUNT_ID], 10)
+	if (!Number.isFinite(n)) return MAX_MAP_ROWS
+	return Math.max(0, Math.min(MAX_MAP_ROWS, n))
 }
 
 /**
@@ -86,11 +98,6 @@ export function parseMappings(text) {
 	return out
 }
 
-/** Render mappings back to the text format `parseMappings` reads. */
-export function serializeMappings(mappings) {
-	return mappings.map((m) => `${SOURCES[m.kind]?.prefix ?? ''}${m.num}=${m.track}`).join('\n')
-}
-
 /** Human-readable complaints about a mapping set, e.g. a matrix number a CL/QL
  *  does not have. Advisory only — the mapping still runs. */
 export function mappingWarnings(mappings) {
@@ -107,10 +114,17 @@ export function mappingWarnings(mappings) {
 	return out
 }
 
-/** Collect the filled-in editor rows, in row order. */
+/**
+ * Collect the usable editor rows, in row order.
+ *
+ * Only rows within the current count are considered — turning the count down is
+ * how a mapping is removed, so a row left behind above it must not keep firing.
+ * A row missing a source or a track is skipped as half-filled.
+ */
 export function mappingsFromRows(config) {
 	const out = []
-	for (let i = 0; i < MAX_MAP_ROWS; i++) {
+	const count = rowCount(config)
+	for (let i = 0; i < count; i++) {
 		const ids = rowIds(i)
 		const kind = String(config?.[ids.src] ?? '')
 		if (!SOURCES[kind]) continue
@@ -122,10 +136,16 @@ export function mappingsFromRows(config) {
 	return out
 }
 
-/** Config patch that lays `mappings` out across the editor rows, clearing the
- *  rest. Callers must keep `mappings.length <= MAX_MAP_ROWS`. */
+/**
+ * Config patch that lays `mappings` out from row 0 with no gaps, blanks every
+ * row above them, and sets the count to match.
+ *
+ * This is what tidies the list: a row the user emptied disappears instead of
+ * leaving a hole, and the rows below it move up. Callers must keep
+ * `mappings.length <= MAX_MAP_ROWS`.
+ */
 export function rowsFromMappings(mappings) {
-	const patch = {}
+	const patch = { [MAP_COUNT_ID]: Math.max(1, Math.min(MAX_MAP_ROWS, mappings.length)) }
 	for (let i = 0; i < MAX_MAP_ROWS; i++) {
 		const ids = rowIds(i)
 		const m = mappings[i]
@@ -139,14 +159,38 @@ export function rowsFromMappings(mappings) {
 /**
  * Build the editor's config fields.
  *
+ * Companion config has no button field, so the row count doubles as the add and
+ * remove control: its arrows step the number of visible mappings up and down.
+ * Rows above the count are hidden by `isVisibleExpression`, which the config
+ * panel evaluates client-side, so a row appears as soon as the number changes —
+ * no save needed.
+ *
+ * Row 1 deliberately carries no expression. If an expression ever fails to
+ * evaluate, the panel still shows a usable mapping row rather than nothing.
+ *
  * `choices` is a snapshot of the session track list taken when the config page
  * was opened — the dropdowns allow a typed value so a track that is not in the
  * list (or not in the session yet) can still be mapped.
  */
 export function mapRowFields(choices) {
-	const fields = []
+	const fields = [
+		{
+			type: 'number',
+			id: MAP_COUNT_ID,
+			label: 'Mappings',
+			tooltip: `Step up to add a mapping, down to remove the last one. Up to ${MAX_MAP_ROWS}.`,
+			width: 3,
+			default: 1,
+			min: 1,
+			max: MAX_MAP_ROWS,
+			// Referenced by the row visibility expressions below, which requires
+			// the field itself not to be expression-capable.
+			disableAutoExpression: true,
+		},
+	]
 	for (let i = 0; i < MAX_MAP_ROWS; i++) {
 		const ids = rowIds(i)
+		const visible = i === 0 ? {} : { isVisibleExpression: `$(options:${MAP_COUNT_ID}) > ${i}` }
 		fields.push(
 			{
 				type: 'dropdown',
@@ -155,6 +199,7 @@ export function mapRowFields(choices) {
 				width: 3,
 				default: SRC_UNUSED,
 				choices: SRC_CHOICES,
+				...visible,
 			},
 			{
 				type: 'number',
@@ -167,6 +212,7 @@ export function mapRowFields(choices) {
 				default: 1,
 				min: 1,
 				max: 128,
+				...visible,
 			},
 			{
 				type: 'dropdown',
@@ -176,6 +222,7 @@ export function mapRowFields(choices) {
 				default: '',
 				choices,
 				allowCustom: true,
+				...visible,
 			},
 		)
 	}

@@ -8,14 +8,10 @@ import {
 	mappingsFromRows,
 	parseMappings,
 	rowsFromMappings,
-	serializeMappings,
 } from './mapping.js'
 import { varSafe, trackChoices } from './util.js'
 
 const CL5_POLL_DEFAULT = 5000
-const CL5_MAP_EXAMPLE = ['33=Vox 1', '45=Pastor Mic', 'mix3=Aux Feed', 'mtx2=Lobby', 'dca8=Band', 'mute2=Choir'].join(
-	'\n',
-)
 
 class ProToolsInstance extends InstanceBase {
 	constructor(internal) {
@@ -27,6 +23,15 @@ class ProToolsInstance extends InstanceBase {
 		this.usingEvents = false
 		this.cl5 = null
 		this.mappings = []
+		this.connecting = false
+		// Bumped whenever the config changes or the instance goes away, so a
+		// connect() already in flight can tell its result is no longer wanted.
+		this.configGeneration = 0
+	}
+
+	/** Seam for tests to supply a stub client. */
+	newPtslClient() {
+		return new PtslClient((lvl, msg) => this.log(lvl, msg))
 	}
 
 	async init(config) {
@@ -38,6 +43,7 @@ class ProToolsInstance extends InstanceBase {
 	}
 
 	async destroy() {
+		this.configGeneration++
 		this.stopTimers()
 		if (this.cl5) {
 			this.cl5.stop()
@@ -52,6 +58,10 @@ class ProToolsInstance extends InstanceBase {
 	async configUpdated(config) {
 		this.config = config
 		this.mappings = this.syncMappingConfig()
+		// Any connect() still in flight is using the old host/port. Retire it so
+		// it closes its own client instead of installing a stale connection.
+		this.configGeneration++
+		this.connecting = false
 		this.stopTimers()
 		if (this.cl5) {
 			this.cl5.stop()
@@ -74,41 +84,36 @@ class ProToolsInstance extends InstanceBase {
 	}
 
 	/**
-	 * Reconcile the structured mapping rows with the free-text field and return
-	 * the mappings to run with.
+	 * Settle the mapping rows and return the mappings to run with.
 	 *
-	 * Whichever side the user last touched wins. `cl5MapAuto` holds the text this
-	 * module last generated, so text that no longer matches it was hand-edited
-	 * (or imported) and gets adopted into the rows; otherwise the rows are the
-	 * editor and are serialised back out to text.
+	 * The rows are the only source of truth. Rows are compacted on every load and
+	 * save, so a mapping the user emptied disappears and the ones below it move
+	 * up, leaving no gaps and no half-filled rows behind.
+	 *
+	 * Configs written before the rows existed kept the mapping in a free-text
+	 * field. That field is gone from the config panel, so its contents are
+	 * imported once and then cleared.
 	 */
 	syncMappingConfig() {
 		const cfg = this.config ?? {}
-		const text = String(cfg.cl5Map ?? '')
-		const rowsOwnText = typeof cfg.cl5MapAuto === 'string' && text === cfg.cl5MapAuto
+		let mappings = mappingsFromRows(cfg)
 
-		let mappings
-		let patch = null
-
-		if (rowsOwnText) {
-			mappings = mappingsFromRows(cfg)
-			const out = serializeMappings(mappings)
-			if (out !== text) patch = { cl5Map: out, cl5MapAuto: out }
-		} else {
-			mappings = parseMappings(text)
-			if (mappings.length <= MAX_MAP_ROWS) {
-				// Adopt the text into the rows, leaving the text itself verbatim so
-				// comments and formatting survive until the rows are next edited.
-				patch = { ...rowsFromMappings(mappings), cl5MapAuto: text }
-			} else {
+		const legacyText = String(cfg.cl5Map ?? '')
+		if (!mappings.length && legacyText) {
+			const imported = parseMappings(legacyText)
+			if (imported.length > MAX_MAP_ROWS) {
 				this.log(
 					'warn',
-					`Console mapping has ${mappings.length} rules, more than the ${MAX_MAP_ROWS} editor rows - the text field stays the source. Trim it to ${MAX_MAP_ROWS} rules to edit it as rows.`,
+					`Console mapping had ${imported.length} rules, more than the ${MAX_MAP_ROWS} rows the editor holds - the last ${imported.length - MAX_MAP_ROWS} were dropped.`,
 				)
 			}
+			mappings = imported.slice(0, MAX_MAP_ROWS)
+			if (mappings.length) this.log('info', `Imported ${mappings.length} console mappings into the mapping rows`)
 		}
 
-		if (patch && Object.keys(patch).some((k) => cfg[k] !== patch[k])) {
+		// Rewriting every row from the surviving mappings is what compacts them.
+		const patch = { ...rowsFromMappings(mappings), cl5Map: '', cl5MapAuto: '' }
+		if (Object.keys(patch).some((k) => cfg[k] !== patch[k])) {
 			Object.assign(cfg, patch)
 			this.config = cfg
 			this.saveConfig(cfg)
@@ -238,17 +243,9 @@ class ProToolsInstance extends InstanceBase {
 				width: 12,
 				label: 'Mapping',
 				value:
-					'One console source per row; leave a row on "unused" to skip it. The track list is a snapshot taken when this page opened - save and reopen to pick up session changes, or type a name that is not in the list. The text field at the bottom holds the same mapping in plain text for import/export.',
+					"One console source per row. Use the Mappings arrows to add a row or remove the last one. Clearing a row's source or track drops it when the config is saved, and the rows below move up. The track list is a snapshot taken when this page opened - save and reopen to pick up session changes, or type a name that is not in the list.",
 			},
 			...mapRowFields(this.configTrackChoices()),
-			{
-				type: 'textinput',
-				id: 'cl5Map',
-				label: 'Mapping as text (one rule per line)',
-				tooltip: `Kept in sync with the rows above. Edit it directly to paste a mapping in - the rows are rebuilt from it on save. Example:\n${CL5_MAP_EXAMPLE}`,
-				width: 12,
-				default: '',
-			},
 		]
 	}
 
@@ -283,35 +280,71 @@ class ProToolsInstance extends InstanceBase {
 		}, 5000)
 	}
 
+	/**
+	 * Open a PTSL connection, unless one is already up or being opened.
+	 *
+	 * Reconnects can overlap: a queued retry timer fires while an earlier attempt
+	 * is still awaiting, or while a connection has since come back up. Without a
+	 * guard each overlapping call opened a second client, and because cleanup
+	 * used to act on `this.ptsl` rather than the client the call created, the
+	 * loser's socket was orphaned -- left open on the Pro Tools side until
+	 * Companion restarted. So this holds its client in a local `const` and only
+	 * ever touches `this.ptsl` when it still owns it.
+	 */
 	async connect() {
+		if (this.connecting || this.ptsl?.connected) return
+
 		const host = this.config?.host || '127.0.0.1'
 		const port = parseInt(this.config?.port ?? '31417', 10)
 		const appName = this.config?.appName || 'Companion'
 
-		this.ptsl = new PtslClient((lvl, msg) => this.log(lvl, msg))
-		this.ptsl.on('streamEnded', () => {
+		const generation = this.configGeneration
+		const ptsl = this.newPtslClient()
+		// True once this attempt is no longer the one wanted -- the config
+		// changed, or the instance was destroyed, while we were awaiting.
+		const superseded = () => generation !== this.configGeneration
+		const release = () => {
+			ptsl.close()
+			if (this.ptsl === ptsl) this.ptsl = null
+		}
+
+		ptsl.on('streamEnded', () => {
 			// Push channel dropped -- fall back to polling until reconnect.
 			this.usingEvents = false
 		})
-		this.ptsl.on('trackStateEvent', () => {
+		ptsl.on('trackStateEvent', () => {
 			this.refreshTracks().catch(() => {})
 		})
-		this.ptsl.on('sessionChanged', () => {
+		ptsl.on('sessionChanged', () => {
 			this.refreshTracks().catch(() => {})
 		})
+
+		this.connecting = true
+		// Nothing else should be open at this point, but close it rather than
+		// letting an unreferenced client keep its socket.
+		if (this.ptsl && this.ptsl !== ptsl) this.ptsl.close()
+		this.ptsl = ptsl
 
 		try {
-			await this.ptsl.connect(host, port, 'Bitfocus', appName)
+			await ptsl.connect(host, port, 'Bitfocus', appName)
+			if (superseded()) return release()
+
 			this.updateStatus(InstanceStatus.Ok)
 			await this.refreshTracks()
+			if (superseded()) return release()
 
-			this.usingEvents = await this.ptsl.subscribeEvents()
+			this.usingEvents = await ptsl.subscribeEvents()
+			if (superseded()) return release()
+
 			this.log(
 				'info',
 				this.usingEvents ? 'Subscribed to Pro Tools push events' : 'Push events unavailable; polling instead',
 			)
 
 			const secs = Math.max(1, Number(this.config?.pollInterval ?? 10))
+			// Reassigning without clearing would strand the old interval, which
+			// keeps polling forever and drives reconnects of its own.
+			if (this.pollTimer) clearInterval(this.pollTimer)
 			this.pollTimer = setInterval(() => {
 				this.refreshTracks().catch(() => {})
 			}, secs * 1000)
@@ -322,29 +355,30 @@ class ProToolsInstance extends InstanceBase {
 		} catch (e) {
 			this.updateStatus(InstanceStatus.ConnectionFailure, e.message)
 			this.log('error', `Could not reach Pro Tools at ${host}:${port} - ${e.message}`)
-			if (this.ptsl) {
-				this.ptsl.close()
-				this.ptsl = null
-			}
-			this.scheduleReconnect()
+			release()
+			if (!superseded()) this.scheduleReconnect()
+		} finally {
+			this.connecting = false
 		}
 	}
 
 	/** Pull the track list and push names/state into definitions + variables. */
 	async refreshTracks() {
-		if (!this.ptsl?.connected) return
+		// Same rule as connect(): act on the client we read, so a failure here
+		// cannot close whatever has replaced it in the meantime.
+		const ptsl = this.ptsl
+		if (!ptsl?.connected) return
 		let tracks
 		try {
-			tracks = await this.ptsl.getTracks()
+			tracks = await ptsl.getTracks()
 		} catch (e) {
 			this.updateStatus(InstanceStatus.ConnectionFailure, e.message)
-			if (this.ptsl) {
-				this.ptsl.close()
-				this.ptsl = null
-			}
+			ptsl.close()
+			if (this.ptsl === ptsl) this.ptsl = null
 			this.scheduleReconnect()
 			return
 		}
+		if (this.ptsl !== ptsl) return // superseded while awaiting
 
 		const namesChanged = tracks.length !== this.tracks.length || tracks.some((t, i) => t.name !== this.tracks[i]?.name)
 		this.tracks = tracks
