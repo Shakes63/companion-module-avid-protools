@@ -42,6 +42,12 @@ yarn test
 yarn package
 ```
 
+`yarn package` bundles `src/` into a single `main.js` at the package root, so
+anything read from disk at runtime must also be listed in
+[build-config.cjs](build-config.cjs) — currently the PTSL `.proto`, which
+`extraFiles` copies next to the bundle. A missing asset there only fails on
+first connect, so `test/package.test.js` checks the two stay in sync.
+
 To run it from source, point Companion at the parent folder using
 **developer mode** (Companion's launcher: enable developer mode and set the
 developer modules path), then add an `avid-protools` connection.

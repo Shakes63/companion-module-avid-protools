@@ -2,13 +2,11 @@
 
 Planned work, roughly in priority order.
 
-## Verify the `@companion-module/base` 2.x build against real hardware
+## Finish verifying the `@companion-module/base` 2.x build on real hardware
 
-The module was migrated from base `1.13` to `2.1.2` and has been validated only
-as far as installing, importing and packaging cleanly. It has **not yet been
-exercised against a live Pro Tools system** on the new base version.
-
-Migration applied, from the base 2.0.0 breaking-change list:
+Deployed to the Graham booth Mac (`gr-tech`, Companion **5.0.3**) on 2026-08-07
+and running against the live rig. Migration applied, from the base 2.0.0
+breaking-change list:
 
 - `runEntrypoint(X, [])` → `export default X`
 - `setVariableDefinitions` takes an **object** keyed by variable id, not an array
@@ -18,15 +16,25 @@ Migration applied, from the base 2.0.0 breaking-change list:
   a `category` string
 - manifest gained `type: "connection"`
 
-To verify: connection reaches Ok, tracks populate, mute/group/solo actions fire,
-feedbacks light, presets appear, and console follow connects and re-syncs.
+Confirmed live: connection reaches Ok (`session_name` populated), tracks
+populate (61), variables update (`muted_count`, per-track `mute_*`/`solo_*`),
+console follow connects and re-syncs (`cl5_connected`/`cl5_sync` = 1, 11
+mappings), and `saveConfig()` from `init()` works — the existing 11-rule text
+mapping was adopted into the structured rows on first load.
 
-Also unverified against a running Companion: the structured mapping editor
-below. Its logic is covered by `test/mapping.test.js`, but nothing has confirmed
-how 16 rows × 3 fields actually render in the config panel, or that
-`saveConfig()` from `init()`/`configUpdated()` behaves as expected there.
+Still to check, since both need a button press or the config panel and the rig
+was in use:
 
-## Structured editor for the console mapping — done, needs a live check
+- Actions actually firing: mute, group mute, solo.
+- Feedbacks lighting and presets appearing.
+- How 16 rows × 3 fields render in the config panel — legibility only, the
+  values are known good.
+
+Deployment notes for next time live in the `remote-machines` skill: quit
+Companion before copying, and note that a base-version change needs a full app
+restart because Companion caches the module's resolved base path.
+
+## Structured editor for the console mapping — done, live
 
 The console→track mapping is now 16 rows of dropdowns (source type, number,
 Pro Tools track) in `src/mapping.js`, reconciled with the original free-text
